@@ -1,0 +1,71 @@
+{
+  "shape": [
+    15500,
+    38
+  ],
+  "na_counts": {
+    "customerID": 0,
+    "Churn": 0,
+    "gender": 0,
+    "SeniorCitizen": 0,
+    "Partner": 0,
+    "Dependents": 0,
+    "tenure": 0,
+    "PhoneService": 0,
+    "MultipleLines": 0,
+    "InternetService": 0,
+    "OnlineSecurity": 0,
+    "OnlineBackup": 0,
+    "DeviceProtection": 0,
+    "TechSupport": 0,
+    "StreamingTV": 0,
+    "StreamingMovies": 0,
+    "Contract": 0,
+    "PaperlessBilling": 0,
+    "PaymentMethod": 0,
+    "MonthlyCharges": 0,
+    "TotalCharges": 0,
+    "BillingDelayDays": 0,
+    "LastSupportContactDaysAgo": 0,
+    "ContractRenewalRemainingDays": 0,
+    "TechComplaint": 0,
+    "NumSupportCalls": 0,
+    "CustomerSatisfaction": 0,
+    "HasMultipleServices": 0,
+    "AvgMonthlyRevenue": 0,
+    "PaymentRegularityIndex": 0,
+    "SupportInteractionRate": 0,
+    "LoyaltyScore": 0,
+    "PromoResponse": 0,
+    "NetPromoterScore": 0,
+    "ChurnBinary": 0,
+    "ChargesTenureRatio": 0,
+    "JoinDate": 0,
+    "LastActiveDate": 0
+  },
+  "dup_rows": 0,
+  "class_balance": {
+    "0": 0.8794,
+    "1": 0.1206
+  },
+  "range_MonthlyCharges": [
+    18.25,
+    118.75
+  ],
+  "range_TotalCharges": [
+    5.757798651029498,
+    8296.366700353687
+  ],
+  "range_BillingDelayDays": [
+    0.0,
+    59.0
+  ],
+  "range_LastSupportContactDaysAgo": [
+    0.0,
+    120.0
+  ],
+  "range_tenure": [
+    1.0,
+    72.0
+  ]
+}

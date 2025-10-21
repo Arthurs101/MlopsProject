@@ -1,0 +1,47 @@
+{
+  "target": "ChurnBinary",
+  "drop_cols": [
+    "Churn",
+    "customerID",
+    "JoinDate",
+    "LastActiveDate"
+  ],
+  "features_num": [
+    "SeniorCitizen",
+    "tenure",
+    "MonthlyCharges",
+    "TotalCharges",
+    "BillingDelayDays",
+    "LastSupportContactDaysAgo",
+    "ContractRenewalRemainingDays",
+    "TechComplaint",
+    "NumSupportCalls",
+    "CustomerSatisfaction",
+    "HasMultipleServices",
+    "AvgMonthlyRevenue",
+    "PaymentRegularityIndex",
+    "SupportInteractionRate",
+    "LoyaltyScore",
+    "PromoResponse",
+    "NetPromoterScore",
+    "ChargesTenureRatio"
+  ],
+  "features_cat": [
+    "gender",
+    "Partner",
+    "Dependents",
+    "PhoneService",
+    "MultipleLines",
+    "InternetService",
+    "OnlineSecurity",
+    "OnlineBackup",
+    "DeviceProtection",
+    "TechSupport",
+    "StreamingTV",
+    "StreamingMovies",
+    "Contract",
+    "PaperlessBilling",
+    "PaymentMethod"
+  ],
+  "snapshot_date": "2025-09-01"
+}
