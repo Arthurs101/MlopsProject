@@ -17,7 +17,4 @@ mlruns/
 __pycache__/
 *.pyc
 *.pyo
-
-# Data pesada opcional (descomenta si no quieres versionar)
-# project/data/processed/
-# data/processed/
+lab3/
