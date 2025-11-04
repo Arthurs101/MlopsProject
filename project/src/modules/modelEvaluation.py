@@ -68,8 +68,89 @@ def find_best_run_id(experiment_name: str, client: MlflowClient):
     return runs[0].info.run_id
 
 def load_model_from_run(run_id: str, model_stage: str = "final_model"):
-    uri = f"runs:/{run_id}/{model_stage}"
-    return mlflow.sklearn.load_model(uri)
+    """
+    Load model from MLflow run with fallback to local filesystem.
+    Tries REST API first, then falls back to local path if REST fails.
+    """
+    from pathlib import Path
+    
+    client = MlflowClient()
+    run = client.get_run(run_id)
+    exp_id = run.info.experiment_id
+    artifact_uri = run.info.artifact_uri
+    
+    # Try alternative model stages if preferred one doesn't work
+    model_stages = [model_stage]
+    if model_stage == "final_model":
+        model_stages.append("model")
+    elif model_stage == "model":
+        model_stages.append("final_model")
+    
+    tried = []
+    
+    for stage in model_stages:
+        # 1) Try REST API first (with timeout awareness)
+        uri = f"runs:/{run_id}/{stage}"
+        try:
+            return mlflow.sklearn.load_model(uri)
+        except Exception as e:
+            # Don't fail immediately - try local fallback
+            tried.append(f"REST:{uri}")
+        
+        # 2) Fallback to local filesystem
+        try:
+            # Parse artifact URI - it can be file://, s3://, http(s)://, or path-like
+            local_base = None
+            
+            if artifact_uri.startswith("file://"):
+                local_base = Path(artifact_uri.replace("file://", ""))
+            elif artifact_uri.startswith(("http://", "https://")):
+                # For HTTP tracking, artifacts are stored locally where MLflow UI is running
+                # The artifact_uri might be a URL, but files are stored locally
+                # Try to find mlruns directory by checking common locations
+                tracking_uri = mlflow.get_tracking_uri()
+                
+                # Extract base path from tracking URI if it's a file path
+                if not tracking_uri.startswith(("http://", "https://")):
+                    local_base = Path(tracking_uri)
+                else:
+                    # Try to find mlruns relative to current working directory
+                    # or check if artifact_uri contains a path we can extract
+                    cwd = Path.cwd()
+                    possible_bases = [
+                        cwd / "mlruns",
+                        cwd.parent / "mlruns",
+                        cwd.parent.parent / "mlruns",
+                        Path("mlruns"),
+                        Path("../mlruns"),
+                    ]
+                    
+                    for base in possible_bases:
+                        if base.exists():
+                            local_base = base
+                            break
+            else:
+                # Assume it's a direct path
+                local_base = Path(artifact_uri)
+            
+            if local_base and local_base.exists():
+                # Try direct artifact path
+                local_path = local_base / stage
+                if local_path.exists():
+                    return mlflow.sklearn.load_model(str(local_path))
+                
+                # Try experiment/run/artifacts structure
+                local_path = local_base / exp_id / run_id / "artifacts" / stage
+                if local_path.exists():
+                    return mlflow.sklearn.load_model(str(local_path))
+        except Exception as e:
+            tried.append(f"LOCAL:{stage} ({type(e).__name__})")
+    
+    raise RuntimeError(
+        f"Could not load model from run {run_id} with stage '{model_stage}'. "
+        f"Tried: {'; '.join(tried)}. "
+        f"Artifact URI: {artifact_uri}"
+    )
 
 def eval_and_log_basic(y_true, y_prob, out_dir: str, prefix: str):
     os.makedirs(out_dir, exist_ok=True)
@@ -185,16 +266,66 @@ def shap_report(model, X_sample, out_dir: str):
     """Reporte de shap para explicar decisiones del modelo"""
     import shap
     os.makedirs(out_dir, exist_ok=True)
-    explainer = shap.Explainer(model.named_steps["clf"])  # intenta explicar el último paso
-    # Nota: para pipelines con OHE/Scaler, lo ideal es explicar el pipeline transformado;
-    # aquí usamos un muestreo de 100 filas transformadas:
+    
+    # Get the classifier and transform the data
+    clf = model.named_steps["clf"]
     X_trans = model.named_steps["prep"].transform(X_sample)
-    shap_values = explainer(X_trans)
-    p = os.path.join(out_dir, "shap_summary.png")
-    shap.plots.beeswarm(shap_values, show=False)
-    plt.tight_layout(); plt.savefig(p, dpi=140); plt.close()
-    mlflow.log_artifact(p)
-    return True
+    
+    # Convert sparse matrix to dense if needed (for OHE)
+    if hasattr(X_trans, 'toarray'):
+        X_trans = X_trans.toarray()
+    
+    # Ensure it's a numpy array
+    if not isinstance(X_trans, np.ndarray):
+        X_trans = np.array(X_trans)
+    
+    # Use appropriate SHAP explainer based on model type
+    try:
+        # Try TreeExplainer for tree-based models
+        if hasattr(clf, 'tree_') or hasattr(clf, 'estimators_'):
+            explainer = shap.TreeExplainer(clf)
+            shap_values = explainer.shap_values(X_trans)
+            # For binary classification, use the positive class
+            if isinstance(shap_values, list):
+                shap_values = shap_values[1] if len(shap_values) > 1 else shap_values[0]
+        # Try LinearExplainer for linear models
+        elif hasattr(clf, 'coef_'):
+            # LinearExplainer needs background data - use a sample from X_trans
+            background = X_trans[:min(100, len(X_trans))] if len(X_trans) > 0 else X_trans
+            explainer = shap.LinearExplainer(clf, background)
+            shap_values = explainer.shap_values(X_trans)
+            # For binary classification, use the positive class
+            if isinstance(shap_values, list):
+                shap_values = shap_values[1] if len(shap_values) > 1 else shap_values[0]
+        # Fallback to KernelExplainer (works with any model but slower)
+        else:
+            # Use a sample for background data
+            background = X_trans[:min(50, len(X_trans))] if len(X_trans) > 0 else X_trans
+            explainer = shap.KernelExplainer(clf.predict_proba, background)
+            shap_values = explainer.shap_values(X_trans[:min(100, len(X_trans))])
+            # For binary classification, use the positive class
+            if isinstance(shap_values, list):
+                shap_values = shap_values[1] if len(shap_values) > 1 else shap_values[0]
+            elif isinstance(shap_values, np.ndarray):
+                if shap_values.ndim > 2 and shap_values.shape[-1] > 1:
+                    shap_values = shap_values[:, :, 1]
+                elif shap_values.ndim == 2 and shap_values.shape[-1] > 1:
+                    shap_values = shap_values[:, 1]
+        
+        # Create beeswarm plot
+        p = os.path.join(out_dir, "shap_summary.png")
+        shap.plots.beeswarm(shap_values, show=False)
+        plt.tight_layout()
+        plt.savefig(p, dpi=140, bbox_inches='tight')
+        plt.close()
+        mlflow.log_artifact(p)
+        return True
+    except Exception as e:
+        # If SHAP fails, log a note but don't fail the entire evaluation
+        print(f"[WARNING] SHAP analysis failed: {e}. Skipping SHAP report.")
+        mlflow.log_param("shap_analysis", "failed")
+        mlflow.log_param("shap_error", str(e)[:200])
+        return False
 
 
 def error_analysis(y_true, y_prob, X_df, out_dir: str, topk: int = 50):
@@ -276,6 +407,7 @@ def main():
     ap.add_argument("--intervention_cost", type=float, default=25.0)
     ap.add_argument("--intervention_rate", type=float, default=0.30)
     ap.add_argument("--retention_success_rate", type=float, default=0.25)
+    ap.add_argument("--skip_shap", action="store_true", help="Skip SHAP analysis (useful if SHAP is causing issues)")
     args = ap.parse_args()
 
     mlflow.set_tracking_uri(args.mlflow_uri)
@@ -312,22 +444,24 @@ def main():
         df_tcv = temporal_cv(model, X_full, y_full, dates_full, n_splits=args.n_splits, out_dir=out_dir)
 
         # --- Importancia de variables (Permutation Importance) ---
-        # OJO: necesitamos nombres post-OHE. Los extraemos del preprocessor si es posible.
-        try:
-            pre = model.named_steps["prep"]
-            num_features = list(pre.transformers_[0][2]) if pre.transformers_ else num_cols
-            ohe = pre.transformers_[1][1].named_steps["ohe"]
-            cat_features = ohe.get_feature_names_out(pre.transformers_[1][2]).tolist()
-            feature_names = num_features + cat_features
-        except Exception:
-            # fallback: columnas crudas
-            feature_names = list(Xte.columns)
+        # Para Pipeline, permutation_importance devuelve importancias por columna ORIGINAL (pre-OHE):
+        feature_names = list(Xte.columns)
+
 
         # Permutation sobre test (más honesto)
         _ = permutation_importance_report(model, Xte, yte, feature_names, out_dir)
 
         # --- SHAP ---
-        _ = shap_report(model, Xte.sample(min(100, len(Xte)), random_state=42), out_dir)
+        if not args.skip_shap:
+            try:
+                _ = shap_report(model, Xte.sample(min(100, len(Xte)), random_state=42), out_dir)
+            except Exception as e:
+                print(f"[WARNING] SHAP analysis failed: {e}. Skipping SHAP report.")
+                mlflow.log_param("shap_analysis", "failed")
+                mlflow.log_param("shap_error", str(e)[:200])
+        else:
+            print("[INFO] SHAP analysis skipped (--skip_shap flag)")
+            mlflow.log_param("shap_analysis", "skipped")
 
         # --- Error analysis ---
         fp, fn = error_analysis(yte, yte_prob, Xte, out_dir, topk=50)

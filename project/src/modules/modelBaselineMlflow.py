@@ -174,7 +174,9 @@ def train_one(model_name: str, estimator, param_dist, Xtr, ytr, Xva, yva, prepro
             mlflow.log_param("has_feature_importances_", False)
 
         # Log del modelo
-        mlflow.sklearn.log_model(best, artifact_path="model")
+        # Use a sample from training data as input example to auto-infer signature
+        input_example = Xtr.head(1) if len(Xtr) > 0 else None
+        mlflow.sklearn.log_model(best, name="model", input_example=input_example)
 
         # Métrica principal para comparar runs
         mlflow.log_metric("val_f1", va_metrics["f1"])
@@ -266,7 +268,9 @@ def main():
         run_dir = os.path.join("mlruns_artifacts", mlflow.active_run().info.run_id)
         metrics_test = eval_and_log(yte, yte_prob, run_dir, prefix="test")
 
-        mlflow.sklearn.log_model(best_est, artifact_path="final_model")
+        # Log final model with input example
+        input_example = Xte.head(1) if len(Xte) > 0 else None
+        mlflow.sklearn.log_model(best_est, name="final_model", input_example=input_example)
         mlflow.log_metric("test_f1", metrics_test["f1"])
         mlflow.log_metric("test_roc_auc", metrics_test["roc_auc"])
 
