@@ -98,9 +98,19 @@ def eval_and_log(y_true, y_prob, run_dir: str, prefix: str):
     im = ax.imshow(cm, cmap="Blues")
     ax.set_title(f"{prefix} - Confusion Matrix")
     ax.set_xlabel("Predicted"); ax.set_ylabel("True")
+    
+    # Set clear axis labels for binary classification
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(["No Churn (0)", "Churn (1)"])
+    ax.set_yticks([0, 1])
+    ax.set_yticklabels(["No Churn (0)", "Churn (1)"])
+    
+    # Add count values in each cell
     for (i,j), val in np.ndenumerate(cm):
-        ax.text(j, i, int(val), ha="center", va="center")
-    fig.colorbar(im); fig.tight_layout()
+        ax.text(j, i, int(val), ha="center", va="center",
+                fontsize=12, fontweight='bold', color='white' if cm[i,j] > cm.max()/2 else 'black')
+    fig.colorbar(im, ax=ax, label='Count')
+    fig.tight_layout()
     cm_path = os.path.join(run_dir, f"{prefix}_confusion_matrix.png")
     plt.savefig(cm_path, dpi=120); plt.close()
     mlflow.log_artifact(cm_path)
