@@ -1,4 +1,4 @@
-/.venv/
+../.venv/
 # Virtual envs
 .venv/
 venv/
@@ -17,4 +17,3 @@ mlruns/
 __pycache__/
 *.pyc
 *.pyo
-lab3/
