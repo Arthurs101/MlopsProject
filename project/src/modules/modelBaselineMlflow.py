@@ -38,13 +38,17 @@ import matplotlib.pyplot as plt
 try:
     from xgboost import XGBClassifier
     HAS_XGB = True
-except Exception:
+    INSSUE_XBG = ""
+except Exception as e:
     HAS_XGB = False
+    INSSUE_XBG = f"XGBoost not installed: {e}"
 
 try:
     from lightgbm import LGBMClassifier
     HAS_LGBM = True
-except Exception:
+    INSSUE_LGBM = ""
+except Exception as e:
+    INSSUE_LGBM = f"LightGBM not installed: {e}"
     HAS_LGBM = False
 
 RANDOM_SEED = 42
@@ -244,11 +248,11 @@ def main():
     else:
         with mlflow.start_run(run_name="xgboost_skipped"):
             mlflow.log_param("model","xgboost")
-            mlflow.log_param("skipped_reason","xgboost not installed")
+            mlflow.log_param("skipped_reason",INSSUE_XBG)
 
     # 4) LightGBM (si disponible)
     if HAS_LGBM:
-        lgbm = LGBMClassifier(random_state=RANDOM_SEED)
+        lgbm = LGBMClassifier(random_state=RANDOM_SEED, verbosity=-1)
         lgbm_space = {
             "clf__n_estimators": [200,400,600],
             "clf__max_depth": [-1, 6, 10],
@@ -260,7 +264,7 @@ def main():
     else:
         with mlflow.start_run(run_name="lightgbm_skipped"):
             mlflow.log_param("model","lightgbm")
-            mlflow.log_param("skipped_reason","lightgbm not installed")
+            mlflow.log_param("skipped_reason",INSSUE_LGBM)
 
     # ---- Selección y evaluación final en test ----
     # Elige por mejor val_f1
