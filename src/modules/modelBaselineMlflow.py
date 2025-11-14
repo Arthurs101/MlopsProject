@@ -155,10 +155,10 @@ def train_one(model_name: str, estimator, param_dist, Xtr, ytr, Xva, yva, prepro
         search = RandomizedSearchCV(
             pipe,
             param_distributions=param_dist,
-            n_iter=15,
+            n_iter=5,
             scoring="f1",
             cv=cv,
-            n_jobs=-1,
+            n_jobs=1,
             random_state=RANDOM_SEED,
             verbose=0
         )
@@ -254,11 +254,11 @@ def main():
     if HAS_LGBM:
         lgbm = LGBMClassifier(random_state=RANDOM_SEED, verbosity=-1)
         lgbm_space = {
-            "clf__n_estimators": [200,400,600],
-            "clf__max_depth": [-1, 6, 10],
-            "clf__learning_rate": [0.01,0.05,0.1],
-            "clf__num_leaves": [31,63,127],
-            "clf__subsample": [0.7,0.9,1.0]
+            "clf__n_estimators": [100,200,300],
+            "clf__max_depth": [6, 8],
+            "clf__learning_rate": [0.05,0.1],
+            "clf__num_leaves": [31,63],
+            "clf__subsample": [0.8,1.0]
         }
         best_lgbm, m_lgbm = train_one("lightgbm", lgbm, lgbm_space, Xtr,ytr,Xva,yva, pre, args.experiment); trained.append(("lightgbm", best_lgbm, m_lgbm))
     else:
@@ -277,6 +277,7 @@ def main():
         ytrva = np.concatenate([ytr, yva])
         best_est.fit(Xtrva, ytrva)
 
+        # Predicción y evaluación en test
         yte_prob = best_est.predict_proba(Xte)[:,1]
         Path("mlruns_artifacts").mkdir(exist_ok=True)
         run_dir = os.path.join("mlruns_artifacts", mlflow.active_run().info.run_id)
@@ -285,11 +286,21 @@ def main():
         # Log final model with input example
         input_example = Xte.head(1) if len(Xte) > 0 else None
         mlflow.sklearn.log_model(best_est, name="final_model", input_example=input_example)
+        
+        # Métricas test
         mlflow.log_metric("test_f1", metrics_test["f1"])
         mlflow.log_metric("test_roc_auc", metrics_test["roc_auc"])
 
-        # (Opcional) Registrar en Model Registry si tienes mlflow server con backend store
-        # mlflow.register_model(f"runs:/{mlflow.active_run().info.run_id}/final_model", "telco-churn-prod")
+         # Registro automático en Model Registry
+        run_id = mlflow.active_run().info.run_id
+        model_uri = f"runs:/{run_id}/final_model"
+
+        registered_name = "teleconnect-churn-prod"
+
+        mlflow.register_model(
+            model_uri=model_uri,
+            name=registered_name
+        )
 
     print("[OK] Entrenamiento y evaluación registrados en MLflow.")
     return 0
